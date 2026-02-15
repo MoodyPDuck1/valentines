@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>...</title>
+    <style>
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: #000; overflow: hidden; touch-action: none;
+            font-family: 'Inter', sans-serif;
+        }
+        canvas { display: block; position: absolute; top: 0; left: 0; }
+        
+        .interface {
+            position: fixed; inset: 0; padding: 25px;
+            display: flex; flex-direction: column; justify-content: space-between;
+            pointer-events: none; z-index: 10; color: #fff;
+            font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+        }
+
+        .header { display: flex; justify-content: space-between; opacity: 0.5; }
+        .footer { text-align: center; opacity: 0.3; }
+
+        #sig {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00f2ff; font-weight: 200; font-size: 14px;
+            opacity: 0; transition: opacity 1.5s ease;
+            text-shadow: 0 0 20px #00f2ff; text-align: center;
+        }
+
+        #game-ui {
+            position: fixed; top: 15%; width: 100%;
+            text-align: center; color: #ff4d6d;
+            font-size: 22px; font-weight: bold;
+            display: none; text-shadow: 0 0 15px #ff4d6d;
+        }
+
+        #basket {
+            position: absolute; bottom: 40px; width: 120px; height: 60px;
+            border: 3px solid #ff4d6d; border-radius: 0 0 60px 60px;
+            background: rgba(255, 77, 109, 0.2); backdrop-filter: blur(8px);
+            display: none; transform: translateX(-50%); pointer-events: none;
+            z-index: 5;
+        }
+
+        .kitty-gif {
+            position: absolute; width: 50px; height: 50px;
+            pointer-events: none; z-index: 4;
+        }
+    </style>
+</head>
+<body>
+    <div class="interface">
+        <div class="header">
+            <span></span>
+            <span id="status">Sync: Stable</span>
+        </div>
+        <div id="sig">SURPRISE</div>
+        <div id="game-ui">KITTIES CAUGHT: <span id="score">0</span> / 10</div>
+        <div class="footer">Fluid Motion // Shake to Play</div>
+    </div>
+
+    <div id="basket"></div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const sig = document.getElementById('sig');
+        const basket = document.getElementById('basket');
+        const gameUI = document.getElementById('game-ui');
+        const scoreSpan = document.getElementById('score');
+        const statusText = document.getElementById('status');
+        
+        let particles = [];
+        let kittyObjects = [];
+        let isGameMode = false;
+        let gameEnding = false; // Fix for the loop bug
+        let score = 0;
+        let mouse = { x: window.innerWidth/2, y: -100 };
+        const count = 1500;
+
+        const KITTY_IMG = "https://media.baamboozle.com/uploads/images/663057/1646986161_1003801_gif-url.gif";
+
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            particles = [];
+            for (let i = 0; i < count; i++) particles.push(new Particle(i));
+        }
+
+        class Particle {
+            constructor(id) {
+                this.id = id;
+                this.angle = (id / count) * Math.PI * 2;
+                this.init();
+            }
+
+            init() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = 0; this.vy = 0;
+                this.accel = 0.01 + Math.random() * 0.03;
+                this.friction = 0.92;
+                this.color = this.id % 3 === 0 ? '#ff0055' : '#00f2ff';
+            }
+
+            update() {
+                if (!isGameMode) {
+                    const scale = Math.min(canvas.width, canvas.height) / 40;
+                    const pulse = 1 + Math.sin(Date.now() / 500) * 0.08;
+                    const tx = (16 * Math.pow(Math.sin(this.angle), 3)) * scale * pulse + canvas.width / 2;
+                    const ty = -(13 * Math.cos(this.angle) - 5 * Math.cos(2*this.angle) - 2 * Math.cos(3*this.angle) - Math.cos(4*this.angle)) * scale * pulse + canvas.height / 2;
+                    this.vx += (tx - this.x) * this.accel;
+                    this.vy += (ty - this.y) * this.accel;
+                } else {
+                    this.vy += 0.03; 
+                }
+
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const d = Math.sqrt(dx*dx + dy*dy);
+                if (d < 100) {
+                    const force = (100 - d) / 100;
+                    this.vx -= dx * force * 0.15;
+                    this.vy -= dy * force * 0.15;
+                }
+
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, 1.5, 1.5);
+            }
+        }
+
+        class Kitty {
+            constructor() {
+                this.x = Math.random() * (canvas.width - 80) + 40;
+                this.y = -60;
+                this.speed = 2.5 + Math.random() * 2.5;
+                this.el = document.createElement('img');
+                this.el.src = KITTY_IMG;
+                this.el.className = 'kitty-gif';
+                document.body.appendChild(this.el);
+            }
+            update() {
+                this.y += this.speed;
+                this.el.style.left = (this.x - 25) + 'px';
+                this.el.style.top = this.y + 'px';
+
+                if (!gameEnding && this.y > canvas.height - 90 && Math.abs(this.x - mouse.x) < 70) {
+                    score++;
+                    scoreSpan.innerText = score;
+                    this.remove();
+                    if (score >= 10) {
+                        gameEnding = true; // Block multiple triggers
+                        setTimeout(toggleGame, 500); 
+                    }
+                    return false;
+                }
+                if (this.y > canvas.height) { this.remove(); return false; }
+                return true;
+            }
+            remove() { if(this.el) this.el.remove(); }
+        }
+
+        function toggleGame() {
+            if (!isGameMode) {
+                // START GAME
+                isGameMode = true;
+                gameEnding = false;
+                statusText.innerText = "Sync: Fragmented";
+                sig.style.opacity = "0";
+                basket.style.display = "block";
+                gameUI.style.display = "block";
+                score = 0; scoreSpan.innerText = "0";
+                particles.forEach(p => { p.vx = (Math.random()-0.5)*60; p.vy = (Math.random()-0.5)*60; });
+            } else {
+                // END GAME & RESTORE HEART
+                isGameMode = false;
+                gameEnding = false;
+                statusText.innerText = "Sync: Stable";
+                sig.style.opacity = "0.6";
+                basket.style.display = "none";
+                gameUI.style.display = "none";
+                kittyObjects.forEach(k => k.remove());
+                kittyObjects = [];
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            particles.forEach(p => { p.update(); p.draw(); });
+
+            if (isGameMode) {
+                if (Math.random() < 0.03 && !gameEnding) kittyObjects.push(new Kitty());
+                kittyObjects = kittyObjects.filter(k => k.update());
+                basket.style.left = mouse.x + 'px';
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        const handleMove = (e) => {
+            const x = e.touches ? e.touches[0].clientX : e.clientX;
+            const y = e.touches ? e.touches[0].clientY : e.clientY;
+            mouse.x = x; mouse.y = y;
+        };
+
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('touchmove', handleMove);
+        window.addEventListener('touchstart', (e) => {
+            handleMove(e);
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission();
+            }
+        });
+        
+        window.addEventListener('keydown', (e) => { 
+            if(e.key.toLowerCase() === 's') toggleGame(); 
+        });
+
+        let lastAcc = 0;
+        window.addEventListener('devicemotion', (e) => {
+            let acc = e.accelerationIncludingGravity;
+            if (!acc) return;
+            let total = Math.abs(acc.x) + Math.abs(acc.y);
+            if (total > 45 && !isGameMode) toggleGame();
+        });
+
+        window.addEventListener('resize', init);
+        init(); animate();
+    </script>
+</body>
+</html>
