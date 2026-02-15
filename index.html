@@ -59,7 +59,7 @@
         </div>
         <div id="sig">SURPRISE</div>
         <div id="game-ui">KITTIES CAUGHT: <span id="score">0</span> / 10</div>
-        <div class="footer">Fluid Motion // Shake to Play</div>
+        <div class="footer">Fluid Motion // Tap 3x to Play</div>
     </div>
 
     <div id="basket"></div>
@@ -77,10 +77,14 @@
         let particles = [];
         let kittyObjects = [];
         let isGameMode = false;
-        let gameEnding = false; // Fix for the loop bug
+        let gameEnding = false;
         let score = 0;
         let mouse = { x: window.innerWidth/2, y: -100 };
         const count = 1500;
+
+        // Triple Tap Logic
+        let tapCount = 0;
+        let lastTapTime = 0;
 
         const KITTY_IMG = "https://media.baamboozle.com/uploads/images/663057/1646986161_1003801_gif-url.gif";
 
@@ -160,7 +164,7 @@
                     scoreSpan.innerText = score;
                     this.remove();
                     if (score >= 10) {
-                        gameEnding = true; // Block multiple triggers
+                        gameEnding = true;
                         setTimeout(toggleGame, 500); 
                     }
                     return false;
@@ -173,7 +177,6 @@
 
         function toggleGame() {
             if (!isGameMode) {
-                // START GAME
                 isGameMode = true;
                 gameEnding = false;
                 statusText.innerText = "Sync: Fragmented";
@@ -183,7 +186,6 @@
                 score = 0; scoreSpan.innerText = "0";
                 particles.forEach(p => { p.vx = (Math.random()-0.5)*60; p.vy = (Math.random()-0.5)*60; });
             } else {
-                // END GAME & RESTORE HEART
                 isGameMode = false;
                 gameEnding = false;
                 statusText.innerText = "Sync: Stable";
@@ -192,53 +194,66 @@
                 gameUI.style.display = "none";
                 kittyObjects.forEach(k => k.remove());
                 kittyObjects = [];
+                tapCount = 0; // Reset tap count
             }
         }
 
         function animate() {
             ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
             particles.forEach(p => { p.update(); p.draw(); });
-
             if (isGameMode) {
                 if (Math.random() < 0.03 && !gameEnding) kittyObjects.push(new Kitty());
                 kittyObjects = kittyObjects.filter(k => k.update());
                 basket.style.left = mouse.x + 'px';
             }
-
             requestAnimationFrame(animate);
         }
 
-        const handleMove = (e) => {
+        // Tap Detection
+        const handleInteraction = (e) => {
+            const now = Date.now();
             const x = e.touches ? e.touches[0].clientX : e.clientX;
             const y = e.touches ? e.touches[0].clientY : e.clientY;
             mouse.x = x; mouse.y = y;
+
+            if (!isGameMode) {
+                if (now - lastTapTime < 500) {
+                    tapCount++;
+                } else {
+                    tapCount = 1;
+                }
+                lastTapTime = now;
+
+                if (tapCount === 3) {
+                    toggleGame();
+                }
+            }
         };
 
-        window.addEventListener('mousemove', handleMove);
-        window.addEventListener('touchmove', handleMove);
+        window.addEventListener('mousedown', handleInteraction);
         window.addEventListener('touchstart', (e) => {
-            handleMove(e);
+            handleInteraction(e);
+            // Permission for sensors not strictly needed for tap, but good for stability
             if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
                 DeviceMotionEvent.requestPermission();
             }
         });
-        
-        window.addEventListener('keydown', (e) => { 
-            if(e.key.toLowerCase() === 's') toggleGame(); 
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
         });
 
-        let lastAcc = 0;
-        window.addEventListener('devicemotion', (e) => {
-            let acc = e.accelerationIncludingGravity;
-            if (!acc) return;
-            let total = Math.abs(acc.x) + Math.abs(acc.y);
-            if (total > 45 && !isGameMode) toggleGame();
+        window.addEventListener('touchmove', (e) => {
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
         });
 
         window.addEventListener('resize', init);
         init(); animate();
     </script>
 </body>
+</html>
+
 </html>
